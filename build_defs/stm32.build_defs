@@ -174,11 +174,15 @@ def _build_post_build_func():
 
     return(_build_output_files)
 
-def stm32_C_library(name:str, ioc:str, srcs:dict = None, out:str = '', visibility:list=None):
+def stm32_C_library(name:str, ioc:str, srcs:dict = None, out:str = '', deps:list=[""], visibility:list=None):
 
   # Generate the stm32 project.
   genName = "_" + name + "#stm32_proj"
   genRule = stm32_proj(genName, ioc = ioc, srcs = srcs, cpp = False)
+
+  # Make sure deps always has at least one element, so that c_library uses the labels set by stm32_proj.
+  if(len(deps) == 0):
+    deps += [""]
 
   # TODO: define post_build function to split generated sources into individual c_rules.
   #Compile the stm32 files into a c library.
@@ -186,18 +190,22 @@ def stm32_C_library(name:str, ioc:str, srcs:dict = None, out:str = '', visibilit
    name = name,
    srcs = [genRule + "|c_srcs", genRule + "|s_srcs"],
    hdrs = [genRule + "|cc_hdrs"],
-   deps = [""],
+   deps = deps,
    visibility = visibility
   )
 
   return(c_rule)
 
-def stm32_CC_library(name:str, ioc:str, srcs:dict = None, out:str = '', visibility:list=None):
+def stm32_CC_library(name:str, ioc:str, srcs:dict = None, out:str = '', deps:list=[""], visibility:list=None):
 
   # Generate the stm32 project.
   genName = "_" + name + "#stm32_proj"
   genRule = stm32_proj(genName, ioc = ioc, srcs = srcs, cpp = True)
 
+  # Make sure deps always has at least one element, so that c_library uses the labels set by stm32_proj.
+  if(len(deps) == 0):
+    deps += [""]
+  
   #Compile the stm32 files into a c library.
   cName = "_" + genName + "#c_lib"
   c_rule = c_library(
