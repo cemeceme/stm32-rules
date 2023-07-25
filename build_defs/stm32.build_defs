@@ -1,0 +1,215 @@
+
+
+"""Rules to build STM32 targets.
+
+These rules define ways of generating stm32 code from .ioc files.
+
+As these rules require CubeMX as the code generator, it will have to be installed on the system prior to use.
+In order to allow for building without having the CubeMX GUI show up on screen, XVFB is also required, however only if the hideGUI config variable is set to True.
+
+The main project generator also allows overriding of files that would be generated under Core/Src and Core/Inc before code generation.
+These will be provided to CubeMX before code generation, and as such code within the usual user tags will persist through code generation.
+
+"""
+
+subinclude("///cc//build_defs:cc")
+subinclude("///cc//build_defs:c")
+
+def stm32_proj(name:str, ioc:str, srcs:dict = None, cpp:bool = False, test_only:bool = False, visibility:list=None):
+  """Generates an STM32 project from an ioc file.
+  Args:
+    name (str): Name of this rule.
+    ioc (str): The source .ioc file for the stm32 project.
+    srcs (dict): Any initial source/header files to use while generating the project. For example the main file or settings headers. The key has to match what cubeMX expects (eg. {'Src': 'main.cpp', 'Inc': 'main.h'}).
+    cpp (bool): If true, generates main.cpp, otherwise generates a main.c.
+    test_only (bool): If True, is only available to other test rules.
+    visibility (list): Visibility declaration of the rule.
+  """
+
+  # Create some runtime variables to use in later commands.
+  iocPathCmd = 'iocPath="${HOME}/' + name + "/" + name + '.ioc" '
+  outPathCmd = 'outPath="${HOME}/' + name + '/" '
+
+  #gencmd =  'iocPath="${HOME}/' + name + "/" + name + '.ioc" '
+  #gencmd += '&& outPath="${HOME}/' + name + '/" '
+
+  gencmd = iocPathCmd + "&& " + outPathCmd
+
+  # Create some base files for the output project.
+  gencmd += '&& ( mkdir "${outPath}" && mkdir "${outPath}"/Core && cp ${SRCS_IOC} ${iocPath} '
+  #gencmd += '&& ( cp ${SRCS_IOC} ${iocPath} '
+  sources = {'ioc': ioc}
+
+  if(srcs):
+    # If override sources were given, move them to the correct directories.
+    srcsOverrides = srcs.get('Src', [])
+    incsOverrides = srcs.get('Inc', [])
+
+    if(len(srcsOverrides) > 0):
+      gencmd += '&& mkdir "${outPath}/Core/Src" && cp "${SRCS_SRCS}" "${outPath}/Core/Src/"' # TODO handle spaces in srcs
+      sources['srcs'] = srcsOverrides
+
+    if(len(incsOverrides) > 0):
+      gencmd += '&& mkdir "${outPath}/Core/Inc" && cp "${SRCS_INCS}" "${outPath}/Core/Inc/"'
+      sources['incs'] = incsOverrides
+
+  if(cpp):
+    gencmd += ' && ( mv "${outPath}/Core/Src/main.cpp" "${outPath}/Core/Src/main.c" || true )'
+
+  gencmd += ' ) && printf "config load %q\\nset dest_path %q\\nproject generate\\nexit\\n" "${iocPath}" "${outPath}" | '
+
+  tools = {"cubemx": CONFIG.STM32.CUBEMX_TOOL}
+
+  # Check if GUI should be piped to a virtual window to hide it.
+  if(CONFIG.STM32.HIDEGUI):
+    # Add hide tool to tools and add hidden cubemx command call.
+    tools["xvfb"] = CONFIG.STM32.XVFB_TOOL
+    gencmd += "$TOOLS_XVFB $TOOLS_CUBEMX -i -s"
+
+  else:
+    # GUI set to not hidden, add visable cubemx command call.
+    gencmd += "$TOOLS_CUBEMX -i -s"
+
+  if(cpp):
+    # Rename the main.c file to main.cpp if set to generate cpp.
+    gencmd += ' && mv "${outPath}/Core/Src/main.c" "${outPath}/Core/Src/main.cpp"'
+
+  gencmd += ' && echo "[FILE LISTING START]" && find ./' + name + ' -type f && echo "[FILE LISTING END]" && echo "[MXPROJECT START]" && cat "${outPath}"/.mxproject && echo "[MXPROJECT END]"'
+
+  projectRule = build_rule(
+    # name = "_" + name + "#gen",
+    name = name,
+    cmd = gencmd,
+    srcs = sources,
+    #outs = [name],
+    tools = tools,
+    building_description = "Generating project...",
+    post_build = _build_post_build_func(),
+    output_is_complete = True,
+    pass_env = ["DISPLAY", "0"]
+  )
+  return(projectRule)
+
+def _build_post_build_func():
+    # Function that returns the post-build function used for stm32_proj to set its outputs and labels.
+
+    def _build_output_files(ruleName, cmdOutput):
+        # This function is called after CubeMX code has been generated.
+        # The cmdOutput contains the build output; file listings and the contents of the .mxproject file. The important sections are seperated by control labels.
+        
+        # Seperate out post-build prints into seperate lists for easier consumption.
+        fileListings = []
+        fileLisitingSection = False
+        mxProjectListings = []
+        mxProjectListingSection = False
+        for curCmd in cmdOutput:
+
+            # Check for control lines.
+            if(curCmd == "[FILE LISTING START]"):
+                fileLisitingSection = True
+                continue
+
+            if(curCmd == "[FILE LISTING END]"):
+                fileLisitingSection = False
+                continue
+
+            if(curCmd == "[MXPROJECT START]"):
+                mxProjectListingSection = True
+                continue
+
+            if(curCmd == "[MXPROJECT END]"):
+                mxProjectListingSection = False
+                continue
+
+            # Add line to respective list, depending on which control flags are enabled.
+            if(fileLisitingSection):
+                fileListings += [curCmd]
+
+            if(mxProjectListingSection):
+                mxProjectListings += [curCmd]
+
+        # log.fatal( "Rule: " + str(ruleName) + " ; " + str(cmdOutput))
+
+        # For each path, add an entry for a named output, so that they can be selectively used by subsequent rules.
+        for path in fileListings:
+           if(path.endswith(".h")):
+               add_out(target=ruleName, name="cc_hdrs", out=path)
+               continue
+           if(path.endswith(".c")):
+               add_out(target=ruleName, name="c_srcs", out=path)
+               continue
+           if(path.endswith(".cpp")):
+               add_out(target=ruleName, name="cc_srcs", out=path)
+               continue
+           if(path.endswith(".s")):
+               add_out(target=ruleName, name="s_srcs", out=path)
+               continue
+           if(path.endswith(".ld")):
+               add_out(target=ruleName, name="ld_srcs", out=path)
+               continue
+        
+
+        for line in mxProjectListings:
+            if(line.startswith("CDefines=")):
+                # Define line, parse and add as cc:def: label.
+                for define in line[9:].split(";"):
+                    if(len(define) <= 1):
+                        continue # Skip empty defines or single characters, in case of a seperater at the end of the line.
+
+                    add_label(name=ruleName, label="cc:def:" + define)
+                continue
+            
+            if(line.startswith("HeaderPath=")):
+                # Include line, parse and add as cc:inc: label.
+                for include in line[11:].split(";"):
+                    if(len(include) <= 1):
+                        continue # Skip empty includes or single characters, in case of a seperater at the end of the line.
+                    
+                    add_label(name=ruleName, label="cc:inc:" + package_name() + "/" + ruleName + "/" + include)
+                continue
+
+    return(_build_output_files)
+
+def stm32_C_library(name:str, ioc:str, srcs:dict = None, out:str = '', visibility:list=None):
+
+  # Generate the stm32 project.
+  genName = "_" + name + "#stm32_proj"
+  genRule = stm32_proj(genName, ioc = ioc, srcs = srcs, cpp = False)
+
+  # TODO: define post_build function to split generated sources into individual c_rules.
+  #Compile the stm32 files into a c library.
+  c_rule = c_library(
+   name = name,
+   srcs = [genRule + "|c_srcs", genRule + "|s_srcs"],
+   hdrs = [genRule + "|cc_hdrs"],
+   deps = [""],
+   visibility = visibility
+  )
+
+  return(c_rule)
+
+def stm32_CC_library(name:str, ioc:str, srcs:dict = None, out:str = '', visibility:list=None):
+
+  # Generate the stm32 project.
+  genName = "_" + name + "#stm32_proj"
+  genRule = stm32_proj(genName, ioc = ioc, srcs = srcs, cpp = True)
+
+  #Compile the stm32 files into a c library.
+  cName = "_" + genName + "#c_lib"
+  c_rule = c_library(
+   name = cName,
+   srcs = [genRule + "|c_srcs", genRule + "|s_srcs"],
+   hdrs = [genRule + "|cc_hdrs"],
+   deps = [""]
+  )
+
+  #Compile any cpp stm32 files into a cpp library
+  cc_rule = cc_library(
+   name = name,
+   srcs = [genRule + "|cc_srcs"],
+   hdrs = [genRule + "|cc_hdrs"],
+   deps = [c_rule],
+   visibility = visibility
+  )
+
+  return(cc_rule)
