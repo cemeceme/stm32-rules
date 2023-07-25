@@ -132,22 +132,26 @@ def _build_post_build_func():
 
         # For each path, add an entry for a named output, so that they can be selectively used by subsequent rules.
         for path in fileListings:
-           if(path.endswith(".h")):
-               add_out(target=ruleName, name="cc_hdrs", out=path)
-               continue
-           if(path.endswith(".c")):
-               add_out(target=ruleName, name="c_srcs", out=path)
-               continue
-           if(path.endswith(".cpp")):
-               add_out(target=ruleName, name="cc_srcs", out=path)
-               continue
-           if(path.endswith(".s")):
-               add_out(target=ruleName, name="s_srcs", out=path)
-               continue
-           if(path.endswith(".ld")):
-               add_out(target=ruleName, name="ld_srcs", out=path)
-               continue
+            if(path.endswith(".h")):
+                add_out(target=ruleName, name="cc_hdrs", out=path)
+                continue
+            if(path.endswith(".c")):
+                add_out(target=ruleName, name="c_srcs", out=path)
+                continue
+            if(path.endswith(".cpp")):
+                add_out(target=ruleName, name="cc_srcs", out=path)
+                continue
+            if(path.endswith(".s")):
+                add_out(target=ruleName, name="s_srcs", out=path)
+                continue
+            if(path.endswith(".ld")):
+                add_out(target=ruleName, name="ld_srcs", out=path)
+                continue
         
+
+        packageDir = package_name()
+        if(len(packageDir) == 0):
+            packageDir = "."
 
         for line in mxProjectListings:
             if(line.startswith("CDefines=")):
@@ -165,7 +169,7 @@ def _build_post_build_func():
                     if(len(include) <= 1):
                         continue # Skip empty includes or single characters, in case of a seperater at the end of the line.
                     
-                    add_label(name=ruleName, label="cc:inc:" + package_name() + "/" + ruleName + "/" + include)
+                    add_label(name=ruleName, label="cc:inc:" + packageDir + "/" + ruleName + "/" + include)
                 continue
 
     return(_build_output_files)
