@@ -46,11 +46,11 @@ def stm32_proj(name:str, ioc:str, srcs:dict = None, cpp:bool = False, test_only:
     incsOverrides = srcs.get('Inc', [])
 
     if(len(srcsOverrides) > 0):
-      gencmd += '&& mkdir "${outPath}/Core/Src" && cp "${SRCS_SRCS}" "${outPath}/Core/Src/"' # TODO handle spaces in srcs
+      gencmd += '&& mkdir "${outPath}/Core/Src" && cp ${SRCS_SRCS} "${outPath}/Core/Src/"' # TODO handle spaces in srcs
       sources['srcs'] = srcsOverrides
 
     if(len(incsOverrides) > 0):
-      gencmd += '&& mkdir "${outPath}/Core/Inc" && cp "${SRCS_INCS}" "${outPath}/Core/Inc/"'
+      gencmd += '&& mkdir "${outPath}/Core/Inc" && cp ${SRCS_INCS} "${outPath}/Core/Inc/"'
       sources['incs'] = incsOverrides
 
   if(cpp):
