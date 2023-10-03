@@ -174,7 +174,7 @@ def _build_post_build_func():
 
     return(_build_output_files)
 
-def stm32_C_library(name:str, ioc:str, srcs:dict = None, out:str = '', deps:list=[""], compiler_flags:list&cflags&copts=[], visibility:list=None):
+def stm32_C_library(name:str, ioc:str, srcs:dict = None, out:str = '', deps:list=[""], compiler_flags:list&cflags&copts=[], alwayslink:bool=False, visibility:list=None):
 
   # Generate the stm32 project.
   genName = "_" + name + "#stm32_proj"
@@ -192,12 +192,13 @@ def stm32_C_library(name:str, ioc:str, srcs:dict = None, out:str = '', deps:list
    hdrs = [genRule + "|cc_hdrs"],
    compiler_flags = compiler_flags,
    deps = deps,
-   visibility = visibility
+   visibility = visibility,
+   alwayslink=alwayslink
   )
 
   return(c_rule)
 
-def stm32_CC_library(name:str, ioc:str, srcs:dict = None, out:str = '', deps:list=[""], compiler_flags:list&cflags&copts=[], visibility:list=None):
+def stm32_CC_library(name:str, ioc:str, srcs:dict = None, out:str = '', deps:list=[""], compiler_flags:list&cflags&copts=[], alwayslink:bool=False, visibility:list=None):
 
   # Generate the stm32 project.
   genName = "_" + name + "#stm32_proj"
@@ -214,7 +215,8 @@ def stm32_CC_library(name:str, ioc:str, srcs:dict = None, out:str = '', deps:lis
    srcs = [genRule + "|c_srcs", genRule + "|s_srcs"],
    hdrs = [genRule + "|cc_hdrs"],
    compiler_flags = compiler_flags,
-   deps = deps
+   deps = deps,
+   alwayslink=alwayslink
   )
 
   #Compile any cpp stm32 files into a cpp library
@@ -224,7 +226,8 @@ def stm32_CC_library(name:str, ioc:str, srcs:dict = None, out:str = '', deps:lis
    hdrs = [genRule + "|cc_hdrs"],
    compiler_flags = compiler_flags,
    deps = [c_rule],
-   visibility = visibility
+   visibility = visibility,
+   alwayslink=alwayslink
   )
 
   return(cc_rule)
