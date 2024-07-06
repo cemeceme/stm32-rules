@@ -54,15 +54,3 @@ DefaultValue = true
 Inherit = true
 Type = bool
 Help = Sets if the STM32CubeMX should be hidden or shown. Useful to debug if the auto generation gets stuck because a user prompt was shown.
-
-
-
-;[PluginDefinition]
-;name = qt
-
-;[PluginConfig "moc_tool"]
-;ConfigKey = qtMocTool
-;DefaultValue = /usr/lib/qt6/libexec/moc
-;Inherit = true
-;Type = str
-;Help = The path to the qt MOC generator tool.

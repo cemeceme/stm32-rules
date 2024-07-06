@@ -128,8 +128,6 @@ def _build_post_build_func():
             if(mxProjectListingSection):
                 mxProjectListings += [curCmd]
 
-        # log.fatal( "Rule: " + str(ruleName) + " ; " + str(cmdOutput))
-
         # For each path, add an entry for a named output, so that they can be selectively used by subsequent rules.
         for path in fileListings:
             if(path.endswith(".h")):
