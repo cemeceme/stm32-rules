@@ -16,216 +16,225 @@ subinclude("///cc//build_defs:cc")
 subinclude("///cc//build_defs:c")
 
 def stm32_proj(name:str, ioc:str, srcs:dict = None, cpp:bool = False, test_only:bool = False, visibility:list=None):
-  """Generates an STM32 project from an ioc file.
-  Args:
-    name (str): Name of this rule.
-    ioc (str): The source .ioc file for the stm32 project.
-    srcs (dict): Any initial source/header files to use while generating the project. For example the main file or settings headers. The key has to match what cubeMX expects (eg. {'Src': 'main.cpp', 'Inc': 'main.h'}).
-    cpp (bool): If true, generates main.cpp, otherwise generates a main.c.
-    test_only (bool): If True, is only available to other test rules.
-    visibility (list): Visibility declaration of the rule.
-  """
+    """Generates an STM32 project from an ioc file.
+    Args:
+        name (str): Name of this rule.
+        ioc (str): The source .ioc file for the stm32 project.
+        srcs (dict): Any initial source/header files to use while generating the project. For example the main file or settings headers. The key has to match what cubeMX expects (eg. {'Src': 'main.cpp', 'Inc': 'main.h'}).
+        cpp (bool): If true, generates main.cpp, otherwise generates a main.c.
+        test_only (bool): If True, is only available to other test rules.
+        visibility (list): Visibility declaration of the rule.
+    """
 
-  # Create some runtime variables to use in later commands.
-  iocPathCmd = 'iocPath="${HOME}/' + name + "/" + name + '.ioc" '
-  outPathCmd = 'outPath="${HOME}/' + name + '/" '
+    # Create some runtime variables to use in later commands.
+    iocPathCmd = 'iocPath="${HOME}/' + name + "/" + name + '.ioc" '
+    outPathCmd = 'outPath="${HOME}/' + name + '/" '
 
-  #gencmd =  'iocPath="${HOME}/' + name + "/" + name + '.ioc" '
-  #gencmd += '&& outPath="${HOME}/' + name + '/" '
+    gencmd = iocPathCmd + "&& " + outPathCmd
 
-  gencmd = iocPathCmd + "&& " + outPathCmd
+    # Create some base files for the output project.
+    gencmd += '&& ( mkdir "${outPath}" && mkdir "${outPath}"/Core && cp ${SRCS_IOC} ${iocPath} '
+    sources = {'ioc': ioc}
 
-  # Create some base files for the output project.
-  gencmd += '&& ( mkdir "${outPath}" && mkdir "${outPath}"/Core && cp ${SRCS_IOC} ${iocPath} '
-  #gencmd += '&& ( cp ${SRCS_IOC} ${iocPath} '
-  sources = {'ioc': ioc}
+    if(srcs):
+        # If override sources were given, move them to the correct directories.
+        srcsOverrides = srcs.get('Src', [])
+        incsOverrides = srcs.get('Inc', [])
 
-  if(srcs):
-    # If override sources were given, move them to the correct directories.
-    srcsOverrides = srcs.get('Src', [])
-    incsOverrides = srcs.get('Inc', [])
+        if(len(srcsOverrides) > 0):
+            gencmd += '&& mkdir "${outPath}/Core/Src" && cp ${SRCS_SRCS} "${outPath}/Core/Src/"' # TODO handle spaces in srcs
+            sources['srcs'] = srcsOverrides
 
-    if(len(srcsOverrides) > 0):
-      gencmd += '&& mkdir "${outPath}/Core/Src" && cp ${SRCS_SRCS} "${outPath}/Core/Src/"' # TODO handle spaces in srcs
-      sources['srcs'] = srcsOverrides
+        if(len(incsOverrides) > 0):
+            gencmd += '&& mkdir "${outPath}/Core/Inc" && cp ${SRCS_INCS} "${outPath}/Core/Inc/"'
+            sources['incs'] = incsOverrides
 
-    if(len(incsOverrides) > 0):
-      gencmd += '&& mkdir "${outPath}/Core/Inc" && cp ${SRCS_INCS} "${outPath}/Core/Inc/"'
-      sources['incs'] = incsOverrides
+    if(cpp):
+        gencmd += ' && ( mv "${outPath}/Core/Src/main.cpp" "${outPath}/Core/Src/main.c" || true )'
 
-  if(cpp):
-    gencmd += ' && ( mv "${outPath}/Core/Src/main.cpp" "${outPath}/Core/Src/main.c" || true )'
+    cubeMXCmd = ""
+    if(CONFIG.STM32.USERNAME and CONFIG.STM32.PASSWORD):
+        cubeMXCmd += "login "
+        cubeMXCmd += CONFIG.STM32.USERNAME
+        cubeMXCmd += " "
+        cubeMXCmd += CONFIG.STM32.PASSWORD
+        cubeMXCmd += " n\\n"
 
-  gencmd += ' ) && printf "config load %q\\nset dest_path %q\\nproject generate\\nexit\\n" "${iocPath}" "${outPath}" | '
+    cubeMXCmd += "config load %q\\n"
+    cubeMXCmd += "set dest_path %q\\n"
+    cubeMXCmd += "project generate\\n"
+    cubeMXCmd += "exit\\n"
 
-  tools = {"cubemx": CONFIG.STM32.CUBEMX_TOOL}
+    gencmd += ' ) && printf "' + cubeMXCmd + '" "${iocPath}" "${outPath}" | '
 
-  # Check if GUI should be piped to a virtual window to hide it.
-  if(CONFIG.STM32.HIDEGUI):
-    # Add hide tool to tools and add hidden cubemx command call.
-    tools["xvfb"] = CONFIG.STM32.XVFB_TOOL
-    gencmd += "$TOOLS_XVFB $TOOLS_CUBEMX -i -s"
 
-  else:
-    # GUI set to not hidden, add visable cubemx command call.
-    gencmd += "$TOOLS_CUBEMX -i -s"
+    tools = {"cubemx": CONFIG.STM32.CUBEMX_TOOL}
 
-  if(cpp):
-    # Rename the main.c file to main.cpp if set to generate cpp.
-    gencmd += ' && mv "${outPath}/Core/Src/main.c" "${outPath}/Core/Src/main.cpp"'
+    # Check if GUI should be piped to a virtual window to hide it.
+    if(CONFIG.STM32.HIDEGUI):
+        # Add hide tool to tools and add hidden cubemx command call.
+        tools["xvfb"] = CONFIG.STM32.XVFB_TOOL
+        gencmd += "$TOOLS_XVFB $TOOLS_CUBEMX -i -s"
 
-  gencmd += ' && echo "[FILE LISTING START]" && find ./' + name + ' -type f && echo "[FILE LISTING END]" && echo "[MXPROJECT START]" && cat "${outPath}"/.mxproject && echo "[MXPROJECT END]"'
+    else:
+        # GUI set to not hidden, add visable cubemx command call.
+        gencmd += "$TOOLS_CUBEMX -i -s"
 
-  projectRule = build_rule(
-    # name = "_" + name + "#gen",
-    name = name,
-    cmd = gencmd,
-    srcs = sources,
-    #outs = [name],
-    tools = tools,
-    building_description = "Generating project...",
-    post_build = _build_post_build_func(),
-    output_is_complete = True,
-    pass_env = ["DISPLAY", "0"]
-  )
-  return(projectRule)
+    if(cpp):
+        # Rename the main.c file to main.cpp if set to generate cpp.
+        gencmd += ' && mv "${outPath}/Core/Src/main.c" "${outPath}/Core/Src/main.cpp"'
+
+    gencmd += ' && echo "[FILE LISTING START]" && find ./' + name + ' -type f && echo "[FILE LISTING END]" && echo "[MXPROJECT START]" && cat "${outPath}"/.mxproject && echo "[MXPROJECT END]"'
+
+    projectRule = build_rule(
+        name = name,
+        cmd = gencmd,
+        srcs = sources,
+        #outs = [name],
+        tools = tools,
+        building_description = "Generating project...",
+        post_build = _build_post_build_func(),
+        output_is_complete = True,
+        pass_env = ["DISPLAY", "0"]
+    )
+    return(projectRule)
 
 def _build_post_build_func():
-    # Function that returns the post-build function used for stm32_proj to set its outputs and labels.
+        # Function that returns the post-build function used for stm32_proj to set its outputs and labels.
 
-    def _build_output_files(ruleName, cmdOutput):
-        # This function is called after CubeMX code has been generated.
-        # The cmdOutput contains the build output; file listings and the contents of the .mxproject file. The important sections are seperated by control labels.
-        
-        # Seperate out post-build prints into seperate lists for easier consumption.
-        fileListings = []
-        fileLisitingSection = False
-        mxProjectListings = []
-        mxProjectListingSection = False
-        for curCmd in cmdOutput:
-
-            # Check for control lines.
-            if(curCmd == "[FILE LISTING START]"):
-                fileLisitingSection = True
-                continue
-
-            if(curCmd == "[FILE LISTING END]"):
+        def _build_output_files(ruleName, cmdOutput):
+                # This function is called after CubeMX code has been generated.
+                # The cmdOutput contains the build output; file listings and the contents of the .mxproject file. The important sections are seperated by control labels.
+                
+                # Seperate out post-build prints into seperate lists for easier consumption.
+                fileListings = []
                 fileLisitingSection = False
-                continue
-
-            if(curCmd == "[MXPROJECT START]"):
-                mxProjectListingSection = True
-                continue
-
-            if(curCmd == "[MXPROJECT END]"):
+                mxProjectListings = []
                 mxProjectListingSection = False
-                continue
+                for curCmd in cmdOutput:
 
-            # Add line to respective list, depending on which control flags are enabled.
-            if(fileLisitingSection):
-                fileListings += [curCmd]
+                        # Check for control lines.
+                        if(curCmd == "[FILE LISTING START]"):
+                                fileLisitingSection = True
+                                continue
 
-            if(mxProjectListingSection):
-                mxProjectListings += [curCmd]
+                        if(curCmd == "[FILE LISTING END]"):
+                                fileLisitingSection = False
+                                continue
 
-        # For each path, add an entry for a named output, so that they can be selectively used by subsequent rules.
-        for path in fileListings:
-            if(path.endswith(".h")):
-                add_out(target=ruleName, name="cc_hdrs", out=path)
-                continue
-            if(path.endswith(".c")):
-                add_out(target=ruleName, name="c_srcs", out=path)
-                continue
-            if(path.endswith(".cpp")):
-                add_out(target=ruleName, name="cc_srcs", out=path)
-                continue
-            if(path.endswith(".s")):
-                add_out(target=ruleName, name="s_srcs", out=path)
-                continue
-            if(path.endswith(".ld")):
-                add_out(target=ruleName, name="ld_srcs", out=path)
-                continue
-        
+                        if(curCmd == "[MXPROJECT START]"):
+                                mxProjectListingSection = True
+                                continue
 
-        packageDir = package_name()
-        if(len(packageDir) == 0):
-            packageDir = "."
+                        if(curCmd == "[MXPROJECT END]"):
+                                mxProjectListingSection = False
+                                continue
 
-        for line in mxProjectListings:
-            if(line.startswith("CDefines=")):
-                # Define line, parse and add as cc:def: label.
-                for define in line[9:].split(";"):
-                    if(len(define) <= 1):
-                        continue # Skip empty defines or single characters, in case of a seperater at the end of the line.
+                        # Add line to respective list, depending on which control flags are enabled.
+                        if(fileLisitingSection):
+                                fileListings += [curCmd]
 
-                    add_label(name=ruleName, label="cc:def:" + define)
-                continue
-            
-            if(line.startswith("HeaderPath=")):
-                # Include line, parse and add as cc:inc: label.
-                for include in line[11:].split(";"):
-                    if(len(include) <= 1):
-                        continue # Skip empty includes or single characters, in case of a seperater at the end of the line.
-                    
-                    add_label(name=ruleName, label="cc:inc:" + packageDir + "/" + ruleName + "/" + include)
-                continue
+                        if(mxProjectListingSection):
+                                mxProjectListings += [curCmd]
 
-    return(_build_output_files)
+                # For each path, add an entry for a named output, so that they can be selectively used by subsequent rules.
+                for path in sorted(fileListings):
+                        if(path.endswith(".h")):
+                                add_out(target=ruleName, name="cc_hdrs", out=path)
+                                continue
+                        if(path.endswith(".c")):
+                                add_out(target=ruleName, name="c_srcs", out=path)
+                                continue
+                        if(path.endswith(".cpp")):
+                                add_out(target=ruleName, name="cc_srcs", out=path)
+                                continue
+                        if(path.endswith(".s")):
+                                add_out(target=ruleName, name="s_srcs", out=path)
+                                continue
+                        if(path.endswith(".ld")):
+                                add_out(target=ruleName, name="ld_srcs", out=path)
+                                continue
+                
+
+                packageDir = package_name()
+                if(len(packageDir) == 0):
+                        packageDir = "."
+
+                for line in sorted(mxProjectListings):
+                        if(line.startswith("CDefines=")):
+                                # Define line, parse and add as cc:def: label.
+                                for define in line[9:].split(";"):
+                                        if(len(define) <= 1):
+                                                continue # Skip empty defines or single characters, in case of a seperater at the end of the line.
+
+                                        add_label(name=ruleName, label="cc:def:" + define)
+                                continue
+                        
+                        if(line.startswith("HeaderPath=")):
+                                # Include line, parse and add as cc:inc: label.
+                                for include in line[11:].split(";"):
+                                        if(len(include) <= 1):
+                                                continue # Skip empty includes or single characters, in case of a seperater at the end of the line.
+                                        
+                                        add_label(name=ruleName, label="cc:inc:" + packageDir + "/" + ruleName + "/" + include)
+                                continue
+
+        return(_build_output_files)
 
 def stm32_C_library(name:str, ioc:str, srcs:dict = None, out:str = '', deps:list=[""], compiler_flags:list&cflags&copts=[], alwayslink:bool=False, visibility:list=None):
 
-  # Generate the stm32 project.
-  genName = "_" + name + "#stm32_proj"
-  genRule = stm32_proj(genName, ioc = ioc, srcs = srcs, cpp = False)
+    # Generate the stm32 project.
+    genName = tag(name, "stm32_proj")
+    genRule = stm32_proj(genName, ioc = ioc, srcs = srcs, cpp = False)
 
-  # Make sure deps always has at least one element, so that c_library uses the labels set by stm32_proj.
-  if(len(deps) == 0):
-    deps += [""]
+    # Make sure deps always has at least one element, so that c_library uses the labels set by stm32_proj.
+    if(len(deps) == 0):
+        deps += [""]
 
-  # TODO: define post_build function to split generated sources into individual c_rules.
-  #Compile the stm32 files into a c library.
-  c_rule = c_library(
-   name = name,
-   srcs = [genRule + "|c_srcs", genRule + "|s_srcs"],
-   hdrs = [genRule + "|cc_hdrs"],
-   compiler_flags = compiler_flags,
-   deps = deps,
-   visibility = visibility,
-   alwayslink=alwayslink
-  )
+    # TODO: define post_build function to split generated sources into individual c_rules.
+    #Compile the stm32 files into a c library.
+    c_rule = c_library(
+     name = name,
+     srcs = [genRule + "|c_srcs", genRule + "|s_srcs"],
+     hdrs = [genRule + "|cc_hdrs"],
+     compiler_flags = compiler_flags,
+     deps = deps,
+     visibility = visibility,
+     alwayslink=alwayslink
+    )
 
-  return(c_rule)
+    return(c_rule)
 
 def stm32_CC_library(name:str, ioc:str, srcs:dict = None, out:str = '', deps:list=[""], compiler_flags:list&cflags&copts=[], alwayslink:bool=False, visibility:list=None):
 
-  # Generate the stm32 project.
-  genName = "_" + name + "#stm32_proj"
-  genRule = stm32_proj(genName, ioc = ioc, srcs = srcs, cpp = True)
+    # Generate the stm32 project.
+    genName = tag(name, "stm32_proj")
+    genRule = stm32_proj(genName, ioc = ioc, srcs = srcs, cpp = True)
 
-  # Make sure deps always has at least one element, so that c_library uses the labels set by stm32_proj.
-  if(len(deps) == 0):
-    deps += [""]
-  
-  #Compile the stm32 files into a c library.
-  cName = "_" + genName + "#c_lib"
-  c_rule = c_library(
-   name = cName,
-   srcs = [genRule + "|c_srcs", genRule + "|s_srcs"],
-   hdrs = [genRule + "|cc_hdrs"],
-   compiler_flags = compiler_flags,
-   deps = deps,
-   alwayslink=alwayslink
-  )
+    # Make sure deps always has at least one element, so that c_library uses the labels set by stm32_proj.
+    if(len(deps) == 0):
+        deps += [""]
+    
+    #Compile the stm32 files into a c library.
+    cName = tag(genName, "c_lib")
+    c_rule = c_library(
+     name = cName,
+     srcs = [genRule + "|c_srcs", genRule + "|s_srcs"],
+     hdrs = [genRule + "|cc_hdrs"],
+     compiler_flags = compiler_flags,
+     deps = deps,
+     alwayslink=alwayslink
+    )
 
-  #Compile any cpp stm32 files into a cpp library
-  cc_rule = cc_library(
-   name = name,
-   srcs = [genRule + "|cc_srcs"],
-   hdrs = [genRule + "|cc_hdrs"],
-   compiler_flags = compiler_flags,
-   deps = [c_rule],
-   visibility = visibility,
-   alwayslink=alwayslink
-  )
+    #Compile any cpp stm32 files into a cpp library
+    cc_rule = cc_library(
+     name = name,
+     srcs = [genRule + "|cc_srcs"],
+     hdrs = [genRule + "|cc_hdrs"],
+     compiler_flags = compiler_flags,
+     deps = [c_rule],
+     visibility = visibility,
+     alwayslink=alwayslink
+    )
 
-  return(cc_rule)
+    return(cc_rule)

@@ -54,3 +54,15 @@ DefaultValue = true
 Inherit = true
 Type = bool
 Help = Sets if the STM32CubeMX should be hidden or shown. Useful to debug if the auto generation gets stuck because a user prompt was shown.
+
+[PluginConfig "username"]
+ConfigKey = username
+DefaultValue = 
+Type = str
+Help = STM32 account username or email to use for authenticating in CubeMX. This may be required if new software repositories need to be downloaded.
+
+[PluginConfig "password"]
+ConfigKey = password
+DefaultValue = 
+Type = str
+Help = STM32 account password to use for authenticating in CubeMX. This may be required if new software repositories need to be downloaded.
